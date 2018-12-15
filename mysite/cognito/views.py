@@ -8,8 +8,11 @@ from jose.utils import base64url_decode
 
 from django.http import HttpResponse, HttpRequest, JsonResponse
 from django.views import View
+from django.conf import settings
+from django.urls import reverse
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
+from django.utils.translation import gettext as _
 
 # Create your views here.
 
@@ -43,10 +46,12 @@ def _get_header() -> str:
 
 
 def _get_user(code: str) -> _UserInfo:
+    redirect_uri = '{}{}'.format(settings.HOST_NAME, reverse('cognito.login'))
+
     data = parse.urlencode({
         "grant_type": "authorization_code",
         "client_id": COGNITO_CLIENT_ID,
-        "redirect_uri": "http://localhost:8000/cognito/login",
+        "redirect_uri": redirect_uri,
         "code": code
     }).encode()
 
@@ -106,7 +111,7 @@ class JWTLoginView(View):
                 break
 
         if key_index == -1:
-            raise RuntimeError('Public key was not found in JWK resource')
+            raise RuntimeError(_('Public key was not found in JWK resource'))
 
         return jwk.construct(jwks[key_index])
 
@@ -120,7 +125,7 @@ class JWTLoginView(View):
 
         # verify the signature
         if not public_key.verify(message.encode("utf8"), decoded_signature):
-            raise RuntimeError('Signature verification failed')
+            raise RuntimeError(_('Signature verification failed'))
 
         return jwt.get_unverified_claims(token)
 
@@ -147,6 +152,6 @@ class LoginView(View):
             User.objects.create_user(test.email, email=test.email, first_name=test.given_name,
                                      last_name=test.family_name)
         except MultipleObjectsReturned:
-            return JsonResponse({"error": "Multiple users for this email"}, status=400)
+            return JsonResponse({"error": _("Multiple users for this email")}, status=400)
 
         return JsonResponse({"status": "OK", "token": test.access_token})

@@ -18,6 +18,7 @@ COGNITO_DOMAIN = environ['AWS_COGNITO_DOMAIN']
 COGNITO_CLIENT_ID = environ['AWS_COGNITO_CLIENT_ID']
 COGNITO_CLIENT_SECRET = environ['AWS_COGNITO_CLIENT_SECRET']
 COGNITO_USER_POOL = environ['AWS_COGNITO_USER_POOL']
+COGNITO_JWKS_URL = 'https://cognito-idp.{}.amazonaws.com/{}/.well-known/jwks.json'.format(AWS_REGION, COGNITO_USER_POOL)
 
 
 class _UserInfo:
@@ -73,11 +74,10 @@ def _get_user(code: str) -> _UserInfo:
 
 class JWTLoginView(View):
     jwk = None
-    keys_url = 'https://cognito-idp.{}.amazonaws.com/{}/.well-known/jwks.json'.format(AWS_REGION, COGNITO_USER_POOL)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        JWTLoginView.__get_jwks()
+        JWTLoginView.__set_jwks()
 
     # noinspection PyMethodMayBeStatic
     def get(self, req: HttpRequest) -> HttpResponse:
@@ -85,41 +85,51 @@ class JWTLoginView(View):
             return HttpResponse(status=400)
 
         token = req.GET['id_token']
+
+        try:
+            public_key = self.__public_key(token)
+            claims = self.__verify_signature(token, public_key)
+            return JsonResponse(claims)
+        except RuntimeError as e:
+            return JsonResponse(status=400, data={'message': '{}'.format(e)})
+
+    def __public_key(self, token: str):
         headers = jwt.get_unverified_headers(token)
         kid = headers['kid']
 
         key_index = -1
         jwks = self.jwk
+
         for i in range(len(jwks)):
             if kid == jwks[i]['kid']:
                 key_index = i
                 break
 
         if key_index == -1:
-            print('Public key not found in jwks.json')
-            return HttpResponse(status=400)
+            raise RuntimeError('Public key was not found in JWK resource')
 
-        public_key = jwk.construct(jwks[key_index])
+        return jwk.construct(jwks[key_index])
+
+    def __verify_signature(self, token: str, public_key) -> dict:
         # get the last two sections of the token,
         # message and signature (encoded in base64)
         message, encoded_signature = str(token).rsplit('.', 1)
+
         # decode the signature
         decoded_signature = base64url_decode(encoded_signature.encode('utf-8'))
+
         # verify the signature
         if not public_key.verify(message.encode("utf8"), decoded_signature):
-            print('Signature verification failed')
-            return HttpResponse(status=400)
+            raise RuntimeError('Signature verification failed')
 
-        claims = jwt.get_unverified_claims(token)
-        print(claims)
-        return JsonResponse(claims)
+        return jwt.get_unverified_claims(token)
 
     @classmethod
-    def __get_jwks(cls):
+    def __set_jwks(cls):
         if cls.jwk is not None:
             return
 
-        response = request.urlopen(cls.keys_url)
+        response = request.urlopen(COGNITO_JWKS_URL)
         cls.jwk = json.loads(response.read())['keys']
 
 

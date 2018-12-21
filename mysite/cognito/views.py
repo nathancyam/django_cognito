@@ -27,13 +27,17 @@ COGNITO_JWKS_URL = 'https://cognito-idp.{}.amazonaws.com/{}/.well-known/jwks.jso
 class _UserInfo:
     def __init__(self, user_response: map, access_token: str):
         self.sub = user_response['sub']
-        self.identities = json.loads(user_response['identities'])
+        self.email = user_response['email']
         self.name = user_response['name']
         self.given_name = user_response['given_name']
         self.family_name = user_response['family_name']
-        self.email = user_response['email']
-        self.picture = user_response['picture']
         self.access_token = access_token
+
+        if 'identities' in user_response:
+            self.identities = json.loads(user_response['identities'])
+
+        if 'picture' in user_response:
+            self.picture = user_response['picture']
 
 
 def index(req: HttpRequest) -> HttpResponse:

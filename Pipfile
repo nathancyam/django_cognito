@@ -6,10 +6,13 @@ verify_ssl = true
 [dev-packages]
 pylint = "*"
 autopep8 = "*"
+awscli = "*"
 
 [packages]
 django = "*"
 python-jose = {extras = ["cryptography"],version = "*"}
+psycopg2-binary = "*"
+psycopg2 = "*"
 
 [requires]
 python_version = "3.7"
